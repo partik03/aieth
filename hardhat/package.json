@@ -1,0 +1,32 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "generate-verifier": "node scripts/generateVerifier.js",
+    "deploy": "hardhat run scripts/deployDIDVerifier.js --network sepolia",
+    "deploy:local": "hardhat run scripts/deployDIDVerifier.js --network localhost",
+    "verify": "hardhat verify --network sepolia"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@account-abstraction/contracts": "^0.8.0",
+    "@openzeppelin/contracts": "^5.3.0",
+    "hardhat": "^2.25.0",
+    "circomlib": "^2.0.5",
+    "snarkjs": "^0.7.0"
+  },
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@nomiclabs/hardhat-waffle": "^2.0.6",
+    "@nomiclabs/hardhat-etherscan": "^3.1.7",
+    "chai": "^5.2.1",
+    "ethereum-waffle": "^4.0.10",
+    "ethers": "^5.8.0",
+    "dotenv": "^16.3.1"
+  }
+}

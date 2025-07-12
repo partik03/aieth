@@ -5,7 +5,7 @@ Main FastAPI application for Crypto-UPI Backend
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from src.services.db import db_service
-from src.api import aadhaar, upi, salary
+from src.api import aadhaar, upi, salary, wallet
 from src.api.ws_chat import websocket_endpoint
 from src.services.twitter_service import twitter_service
 
@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(aadhaar.router, prefix="/api/aadhaar", tags=["Aadhaar Verification"])
     app.include_router(upi.router, prefix="/api/upi", tags=["UPI Payments"])
     app.include_router(salary.router, prefix="/api", tags=["Salary & Investment"])
+    app.include_router(wallet.router, prefix="/api", tags=["Smart Wallet"])
     
     # WebSocket routes
     @app.websocket("/ws/chat/{user_id}")

@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     max_loan_amount: float = Field(default=100000, env="MAX_LOAN_AMOUNT")
     min_credit_score: int = Field(default=600, env="MIN_CREDIT_SCORE")
     
+    # Biconomy Smart Account
+    biconomy_api_key: str = Field(..., env="BICONOMY_API_KEY")
+    biconomy_relayer_key: str = Field(..., env="BICONOMY_RELAYER_KEY")
+    chain_id: int = Field(default=80001, env="CHAIN_ID")  # Mumbai testnet
+    entry_point_address: str = Field(default="0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789", env="ENTRY_POINT_ADDRESS")
+    web3_rpc_url: str = Field(..., env="WEB3_RPC_URL")
+    
     model_config = {
         "env_file": ".env",
         "case_sensitive": False
