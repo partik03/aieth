@@ -26,7 +26,7 @@ async def initiate_aadhaar_verification(request: AadhaarInitiateRequest):
     """
     try:
         response = await aadhaar_service.initiate_verification(request)
-        
+        print(response)
         if not response.success:
             raise HTTPException(
                 status_code=400,
