@@ -66,7 +66,7 @@ class AadhaarInitiateResponse(BaseModel):
     """Response model for Aadhaar initiation"""
     success: bool
     txn: Optional[str] = None
-    message: str
+    message: Optional[str] = None
     error_code: Optional[str] = None
 
 
@@ -76,7 +76,7 @@ class AadhaarVerifyResponse(BaseModel):
     verified: bool
     aadhaar_number: Optional[str] = None
     kyc_data: Optional[AadhaarKYCData] = None
-    message: str
+    message: Optional[str] = None
     error_code: Optional[str] = None
 
 

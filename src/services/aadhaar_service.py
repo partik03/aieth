@@ -4,10 +4,13 @@ Aadhaar verification service using DigiLocker sandbox API
 
 import httpx
 import json
+from bson import ObjectId
 from typing import Optional, Dict, Any
 from datetime import datetime
 import xml.etree.ElementTree as ET
-
+from twilio.rest import Client
+import random
+from src.services.db import get_collection
 from src.config.settings import get_settings
 from src.models.aadhaar import (
     AadhaarInitiateRequest,
@@ -25,52 +28,35 @@ class AadhaarService:
     """Service for Aadhaar verification using DigiLocker API"""
     
     def __init__(self):
-        self.settings = get_settings()
-        self.base_url = self.settings.digilocker_base_url
-        self.client_id = self.settings.digilocker_client_id
-        self.client_secret = self.settings.digilocker_client_secret
-        self.redirect_uri = self.settings.digilocker_redirect_uri
+        self.collection_name = "aadhaar_verification"
     
     async def initiate_verification(self, request: AadhaarInitiateRequest) -> AadhaarInitiateResponse:
         """Initiate Aadhaar verification by generating OTP"""
         try:
-            # Prepare DigiLocker request
-            digilocker_request = DigiLockerGenerateOTPRequest(
-                client_id=self.client_id,
-                client_secret=self.client_secret,
-                redirect_uri=self.redirect_uri,
-                aadhaar_number=request.aadhaar_number.replace('-', '')
-            )
             
-            # Call DigiLocker generate OTP endpoint
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/generateOTP",
-                    json=digilocker_request.dict(),
-                    headers={"Content-Type": "application/json"}
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    if data.get("status") == "success":
-                        return AadhaarInitiateResponse(
-                            success=True,
-                            txn=data.get("txn"),
-                            message="OTP sent successfully to Aadhaar-linked mobile"
-                        )
-                    else:
-                        return AadhaarInitiateResponse(
-                            success=False,
-                            message=data.get("message", "Failed to generate OTP"),
-                            error_code=data.get("error_code")
-                        )
-                else:
-                    return AadhaarInitiateResponse(
-                        success=False,
-                        message=f"DigiLocker API error: {response.status_code}",
-                        error_code=str(response.status_code)
-                    )
+            account_sid = 'ACdcd1b22e57f5d93ceb9b332ab7a21c23'
+            auth_token = '19c8a215c787c5da3038265dd3a24533'
+            otp = str(random.randint(100000, 999999))
+            client = Client(account_sid, auth_token)
+            message = client.messages.create(
+                from_='+15075919786',
+                body=f"Your AADHAAR verifcation code is : {otp}",
+                to='+919653040310'
+            )
+
+            collection = await get_collection(self.collection_name)
+
+            aadhaar_verification_doc = {
+                "aadhaar_number": request.aadhaar_number,
+                "mobile_number":'+919653040310',
+                "otp": otp,
+                "generated_at": datetime.utcnow()
+            }
+            
+            result = await collection.insert_one(aadhaar_verification_doc)
+            if result.inserted_id:
+                return AadhaarInitiateResponse(success= True, txn=str(result.inserted_id))
+            return None
                     
         except Exception as e:
             return AadhaarInitiateResponse(
@@ -82,82 +68,14 @@ class AadhaarService:
     async def verify_otp(self, request: AadhaarVerifyRequest) -> AadhaarVerifyResponse:
         """Verify OTP and retrieve Aadhaar KYC data"""
         try:
-            # Step 1: Verify OTP
-            verify_request = DigiLockerVerifyOTPRequest(
-                client_id=self.client_id,
-                client_secret=self.client_secret,
-                txn=request.txn,
-                otp=request.otp
-            )
+            collection = await get_collection(self.collection_name)
+            aadhaar_verification_doc = await collection.find_one({"_id": ObjectId(request.txn)})
+
+            if aadhaar_verification_doc["otp"] == request.otp:
+                return AadhaarVerifyResponse(success=True, verified=True)
+            else:
+                return AadhaarVerifyResponse(success=True, verified=False)
             
-            async with httpx.AsyncClient() as client:
-                # Verify OTP
-                verify_response = await client.post(
-                    f"{self.base_url}/verifyOTP",
-                    json=verify_request.dict(),
-                    headers={"Content-Type": "application/json"}
-                )
-                
-                if verify_response.status_code != 200:
-                    return AadhaarVerifyResponse(
-                        success=False,
-                        verified=False,
-                        message=f"OTP verification failed: {verify_response.status_code}",
-                        error_code=str(verify_response.status_code)
-                    )
-                
-                verify_data = verify_response.json()
-                
-                if verify_data.get("status") != "success":
-                    return AadhaarVerifyResponse(
-                        success=False,
-                        verified=False,
-                        message=verify_data.get("message", "Invalid OTP"),
-                        error_code=verify_data.get("error_code")
-                    )
-                
-                # Step 2: Get Aadhaar KYC data
-                auth_request = DigiLockerGetAuthDataRequest(
-                    client_id=self.client_id,
-                    client_secret=self.client_secret,
-                    txn=request.txn
-                )
-                
-                auth_response = await client.post(
-                    f"{self.base_url}/getAuthData",
-                    json=auth_request.dict(),
-                    headers={"Content-Type": "application/json"}
-                )
-                
-                if auth_response.status_code == 200:
-                    auth_data = auth_response.json()
-                    
-                    if auth_data.get("status") == "success":
-                        # Parse KYC data from XML
-                        kyc_data = self._parse_kyc_xml(auth_data.get("kyc_data", ""))
-                        
-                        return AadhaarVerifyResponse(
-                            success=True,
-                            verified=True,
-                            aadhaar_number=kyc_data.get("aadhaar_number"),
-                            kyc_data=AadhaarKYCData(**kyc_data),
-                            message="Aadhaar verification successful"
-                        )
-                    else:
-                        return AadhaarVerifyResponse(
-                            success=False,
-                            verified=False,
-                            message=auth_data.get("message", "Failed to retrieve KYC data"),
-                            error_code=auth_data.get("error_code")
-                        )
-                else:
-                    return AadhaarVerifyResponse(
-                        success=False,
-                        verified=False,
-                        message=f"Failed to retrieve KYC data: {auth_response.status_code}",
-                        error_code=str(auth_response.status_code)
-                    )
-                    
         except Exception as e:
             return AadhaarVerifyResponse(
                 success=False,
