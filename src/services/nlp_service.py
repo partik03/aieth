@@ -13,6 +13,7 @@ from src.services.salary_service import salary_service
 from src.services.twitter_service import twitter_service
 from src.services.finance_agent import finance_agent_service
 from src.services.mock_upi_data import mock_upi_data_service
+from src.services.upi_data_service import upi_data_service
 
 
 class NLPService:
@@ -60,6 +61,8 @@ class NLPService:
                 return await self._handle_financial_insights(user_id)
             elif intent == "transaction_summary":
                 return await self._handle_transaction_summary(user_id)
+            elif intent == "register_upi":
+                return await self._handle_register_upi(message_lower, user_id)
             elif intent == "help":
                 return self._get_help_message()
             else:
@@ -127,6 +130,17 @@ class NLPService:
             r"monthly.*summary"
         ]
         
+        # UPI registration patterns
+        upi_patterns = [
+            r"register.*upi",
+            r"add.*upi",
+            r"connect.*upi",
+            r"set.*upi",
+            r"my upi.*is",
+            r"upi.*id.*is",
+            r"use.*upi.*id"
+        ]
+        
         # Check patterns
         for pattern in transfer_patterns:
             if re.search(pattern, message):
@@ -151,6 +165,10 @@ class NLPService:
         for pattern in summary_patterns:
             if re.search(pattern, message):
                 return "transaction_summary"
+        
+        for pattern in upi_patterns:
+            if re.search(pattern, message):
+                return "register_upi"
         
         for pattern in help_patterns:
             if re.search(pattern, message):
@@ -231,8 +249,12 @@ class NLPService:
     async def _handle_analyze_transactions(self, user_id: str) -> str:
         """Handle transaction analysis intent"""
         try:
-            # Generate mock transactions for the user
-            transactions = mock_upi_data_service.get_user_transactions(user_id, days=90)
+            # Try to get transactions from UPI data service first
+            transactions = await upi_data_service.get_transactions(user_id, days=90)
+            
+            if not transactions:
+                # Fall back to mock data if no real transactions
+                transactions = mock_upi_data_service.get_user_transactions(user_id, days=90)
             
             if not transactions:
                 return "❌ No transaction data found for analysis."
@@ -249,199 +271,227 @@ class NLPService:
             # Format response
             response = "📊 **Transaction Analysis Results**\n\n"
             
+            # Add spending analysis
             if structured_analysis.get("spending_analysis"):
-                response += f"🔍 **Spending Analysis:**\n{structured_analysis['spending_analysis']}\n\n"
+                response += "🔍 **Spending Analysis:**\n"
+                response += structured_analysis["spending_analysis"][:300] + "...\n\n"
             
+            # Add financial health
             if structured_analysis.get("financial_health"):
-                response += f"💚 **Financial Health:**\n{structured_analysis['financial_health']}\n\n"
+                response += "💹 **Financial Health:**\n"
+                response += structured_analysis["financial_health"][:300] + "...\n\n"
             
-            if structured_analysis.get("savings_opportunities"):
-                response += f"💰 **Savings Opportunities:**\n{structured_analysis['savings_opportunities']}\n\n"
-            
-            if structured_analysis.get("next_steps"):
-                response += f"🎯 **Next Steps:**\n{structured_analysis['next_steps']}\n\n"
-            
-            response += f"📈 **Key Metrics:**\n"
+            # Add key metrics
             key_metrics = analysis.get("key_metrics", {})
-            response += f"• Total Spent: ₹{key_metrics.get('total_spent', 0):,.2f}\n"
-            response += f"• Transactions: {key_metrics.get('transaction_count', 0)}\n"
-            response += f"• Average Transaction: ₹{key_metrics.get('avg_transaction', 0):,.2f}\n"
-            response += f"• Top Category: {key_metrics.get('top_category', 'N/A')}\n"
+            if key_metrics:
+                response += "📈 **Key Metrics:**\n"
+                response += f"- Total Spent: ₹{key_metrics.get('total_spent', 0):,.2f}\n"
+                response += f"- Transactions: {key_metrics.get('transaction_count', 0)}\n"
+                response += f"- Average: ₹{key_metrics.get('avg_transaction', 0):,.2f}\n"
+                response += f"- Top Category: {key_metrics.get('top_category', 'N/A')}\n\n"
+            
+            # Add next steps
+            if structured_analysis.get("next_steps"):
+                response += "👣 **Recommended Next Steps:**\n"
+                response += structured_analysis["next_steps"][:300] + "...\n"
             
             return response
             
         except Exception as e:
-            return f"❌ Transaction analysis failed: {str(e)}"
+            return f"❌ Analysis failed: {str(e)}"
     
     async def _handle_financial_insights(self, user_id: str) -> str:
         """Handle financial insights intent"""
         try:
-            # Generate mock transactions
-            transactions = mock_upi_data_service.get_user_transactions(user_id, days=60)
+            # Try to get transactions from UPI data service first
+            transactions = await upi_data_service.get_transactions(user_id, days=90)
             
             if not transactions:
-                return "❌ No transaction data available for insights."
+                # Fall back to mock data if no real transactions
+                transactions = mock_upi_data_service.get_user_transactions(user_id, days=90)
+            
+            if not transactions:
+                return "❌ No transaction data found for insights."
             
             # Get transaction summary
-            summary = mock_upi_data_service.get_transaction_summary(transactions)
+            summary = upi_data_service.get_transaction_summary(transactions)
             
-            # Get AI-powered recommendations
+            # Analyze transactions
             analysis_result = await finance_agent_service.analyze_transactions(user_id, transactions)
             
             if not analysis_result.get("success"):
-                return f"❌ Insights generation failed: {analysis_result.get('error', 'Unknown error')}"
+                return f"❌ Analysis failed: {analysis_result.get('error', 'Unknown error')}"
             
-            # Get detailed recommendations
+            # Get recommendations
             recommendations_result = await finance_agent_service.get_financial_recommendations(
                 user_id, analysis_result.get("analysis", {})
             )
             
+            if not recommendations_result.get("success"):
+                return f"❌ Recommendations failed: {recommendations_result.get('error', 'Unknown error')}"
+            
             # Format response
             response = "🧠 **Financial Insights & Recommendations**\n\n"
             
-            # Add summary statistics
-            response += f"📊 **Quick Summary:**\n"
+            # Add summary
+            response += "📊 **Quick Summary:**\n"
             response += f"• Total Transactions: {summary.get('total_transactions', 0)}\n"
             response += f"• Net Amount: ₹{summary.get('net_amount', 0):,.2f}\n"
             response += f"• Average Transaction: ₹{summary.get('average_transaction', 0):,.2f}\n\n"
             
-            # Add AI recommendations
-            if recommendations_result.get("success"):
-                response += f"💡 **AI Recommendations:**\n{recommendations_result.get('recommendations', 'No recommendations available.')}\n\n"
-            else:
-                response += f"💡 **General Advice:**\nConsider reviewing your spending patterns and setting up automatic savings transfers.\n\n"
-            
-            # Add top spending categories
-            categories = summary.get('categories', {})
-            if categories:
-                response += f"🏷️ **Top Spending Categories:**\n"
-                sorted_categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)[:3]
-                for category, amount in sorted_categories:
-                    response += f"• {category}: ₹{amount:,.2f}\n"
+            # Add recommendations
+            recommendations = recommendations_result.get("recommendations", "")
+            if recommendations:
+                # Extract just the first part of recommendations (they can be lengthy)
+                response += "💡 **Key Recommendations:**\n"
+                
+                # Try to extract bullet points
+                bullet_points = re.findall(r'[•\-\*]\s+([^\n]+)', recommendations)
+                if bullet_points:
+                    # Take first 5 bullet points
+                    for i, point in enumerate(bullet_points[:5]):
+                        response += f"• {point}\n"
+                    
+                    if len(bullet_points) > 5:
+                        response += "• ...\n"
+                else:
+                    # Just take first 300 chars
+                    response += recommendations[:300] + "...\n"
             
             return response
             
         except Exception as e:
-            return f"❌ Financial insights failed: {str(e)}"
+            return f"❌ Insights failed: {str(e)}"
     
     async def _handle_transaction_summary(self, user_id: str) -> str:
         """Handle transaction summary intent"""
         try:
-            # Generate mock transactions
-            transactions = mock_upi_data_service.get_user_transactions(user_id, days=30)
+            # Try to get transactions from UPI data service first
+            transactions = await upi_data_service.get_transactions(user_id, days=30)
             
             if not transactions:
-                return "❌ No transaction data available for summary."
+                # Fall back to mock data if no real transactions
+                transactions = mock_upi_data_service.get_user_transactions(user_id, days=30)
             
-            # Get detailed summary
-            summary = mock_upi_data_service.get_transaction_summary(transactions)
+            if not transactions:
+                return "❌ No transaction data found for summary."
+            
+            # Get summary
+            summary = upi_data_service.get_transaction_summary(transactions)
             
             # Format response
             response = "📋 **Transaction Summary (Last 30 Days)**\n\n"
             
-            response += f"💰 **Financial Overview:**\n"
+            # Financial overview
+            response += "💰 **Financial Overview:**\n"
             response += f"• Total Amount: ₹{summary.get('total_amount', 0):,.2f}\n"
             response += f"• Total Transactions: {summary.get('total_transactions', 0)}\n"
-            response += f"• Average Transaction: ₹{summary.get('average_transaction', 0):,.2f}\n"
-            response += f"• Net Amount: ₹{summary.get('net_amount', 0):,.2f}\n\n"
+            response += f"• Average Transaction: ₹{summary.get('average_transaction', 0):,.2f}\n\n"
             
-            response += f"📊 **Transaction Breakdown:**\n"
-            response += f"• Debit Transactions: {summary.get('debit_transactions', 0)} (₹{summary.get('debit_amount', 0):,.2f})\n"
-            response += f"• Credit Transactions: {summary.get('credit_transactions', 0)} (₹{summary.get('credit_amount', 0):,.2f})\n\n"
+            # Category breakdown
+            response += "📊 **Top Spending Categories:**\n"
+            top_categories = summary.get('top_categories', [])
+            for category, amount in top_categories[:5]:
+                percentage = (amount / summary.get('total_amount', 1)) * 100
+                response += f"• {category}: ₹{amount:,.2f} ({percentage:.1f}%)\n"
             
-            # Add category breakdown
-            categories = summary.get('categories', {})
-            if categories:
-                response += f"🏷️ **Category Breakdown:**\n"
-                sorted_categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)
-                for category, amount in sorted_categories[:5]:  # Top 5 categories
-                    percentage = (amount / summary.get('total_amount', 1)) * 100
-                    response += f"• {category}: ₹{amount:,.2f} ({percentage:.1f}%)\n"
+            # Transaction types
+            response += f"\n💸 **Transaction Types:**\n"
+            response += f"• Debits: {summary.get('debit_transactions', 0)} (₹{summary.get('debit_amount', 0):,.2f})\n"
+            response += f"• Credits: {summary.get('credit_transactions', 0)} (₹{summary.get('credit_amount', 0):,.2f})\n"
+            response += f"• Net Amount: ₹{summary.get('net_amount', 0):,.2f}\n"
             
             return response
             
         except Exception as e:
-            return f"❌ Transaction summary failed: {str(e)}"
+            return f"❌ Summary failed: {str(e)}"
+    
+    async def _handle_register_upi(self, message: str, user_id: str) -> str:
+        """Handle UPI registration intent"""
+        try:
+            # Extract UPI ID from message
+            upi_match = re.search(r'([a-zA-Z0-9._-]+@[a-zA-Z0-9]+)', message)
+            
+            if not upi_match:
+                return "❌ Please provide a valid UPI ID in the format username@provider (e.g., johndoe@okicici)"
+            
+            upi_id = upi_match.group(1)
+            
+            # Register UPI ID
+            result = await upi_data_service.collect_upi_data(user_id, upi_id)
+            
+            if result.get("success"):
+                return f"✅ Successfully registered UPI ID: {upi_id}\n\nYou can now use commands like 'analyze my transactions' or 'show me financial insights' to get personalized financial analysis based on your UPI transactions!"
+            else:
+                return f"❌ Failed to register UPI ID: {result.get('error', 'Unknown error')}"
+                
+        except Exception as e:
+            return f"❌ UPI registration failed: {str(e)}"
     
     async def _handle_invest_salary(self, message: str, user_id: str) -> str:
         """Handle invest salary intent"""
         try:
-            # Extract salary amount
+            # Extract amount
             amount_match = re.search(r'(\d+(?:\.\d+)?)', message)
             if not amount_match:
-                return "❌ Please specify a salary amount to invest."
+                return "❌ Please specify an amount to invest."
             
             amount = float(amount_match.group(1))
             
-            # Create mock salary data
-            salary_data = {
-                "user_id": user_id,
-                "amount": amount,
-                "employer": "User Input",
-                "date": datetime.now().strftime("%Y-%m-%d")
-            }
+            # Call salary service to invest
+            investment_result = await salary_service.invest_salary(user_id, amount)
             
-            # Get trending tokens
-            trending_tokens = await twitter_service.get_trending_tokens()
-            
-            # Generate investment strategy
-            strategy_result = await ai_agent_service.generate_investment_strategy(
-                salary_data, 
-                trending_tokens
-            )
-            
-            if not strategy_result.get("success"):
-                return "❌ Failed to generate investment strategy."
-            
-            strategy = strategy_result.get("strategy", {})
-            
-            # Format strategy response
-            strategy_text = []
-            for token, percentage in strategy.items():
-                strategy_text.append(f"{percentage}% {token}")
-            
-            strategy_summary = ", ".join(strategy_text)
-            
-            return f"📈 Investment Strategy Generated!\n\n💰 Salary: ₹{amount}\n🎯 Allocation: {strategy_summary}\n\n💡 Reasoning: {strategy_result.get('reasoning', 'AI-generated strategy')}"
-            
+            if investment_result.get("success"):
+                strategy = investment_result.get("strategy", "")
+                return f"📈 Investment Strategy Generated!   \n\n💰 Salary: ₹{amount}\n🎯 Allocation: {strategy}\n\n💡 Reasoning: {investment_result.get('reasoning', 'Strategy based on market analysis')}"
+            else:
+                return f"❌ Investment failed: {investment_result.get('error', 'Unknown error')}"
+                
         except Exception as e:
-            return f"❌ Investment strategy generation failed: {str(e)}"
+            return f"❌ Investment failed: {str(e)}"
     
     def _get_help_message(self) -> str:
         """Get help message with available commands"""
-        return """🤖 **AI Wallet Assistant - Available Commands**
-
-💸 **Transfer Money:**
-- "Send 50 USDT to Alice"
-- "Transfer 1000 INR to Bob"
-- "Pay 25 ETH to Charlie"
-
-💼 **Check Balance:**
-- "What's my balance?"
-- "Check my wallet balance"
-- "How much do I have?"
-
-📈 **Invest Salary:**
-- "Invest my ₹2000 salary this month"
-- "Buy crypto with ₹5000"
-- "Purchase crypto for ₹1000"
-
-📊 **Financial Analysis:**
-- "Analyze transactions" - Deep transaction analysis with AI insights
-- "Financial insights" - Get personalized financial advice
-- "Transaction summary" - Monthly spending summary
-- "Spending analysis" - Detailed spending pattern analysis
-
-❓ **Help:**
-- "Help" or "What can you do?"
-
-**Supported Recipients:** Alice, Bob, Charlie, David, Emma
-**Supported Tokens:** BTC, ETH, MATIC, SOL, DOGE, USDT, USDC, INR"""
+        help_message = "🤖 **AI Wallet Assistant - Available Commands**\n\n"
+        
+        help_message += "💸 **Transfer Money:**\n"
+        help_message += "- \"Send 50 USDT to Alice\"\n"
+        help_message += "- \"Transfer 1000 INR to Bob\"\n"
+        help_message += "- \"Pay 25 ETH to Charlie\"\n\n"
+        
+        help_message += "💼 **Check Balance:**\n"
+        help_message += "- \"What's my balance?\"\n"
+        help_message += "- \"Check my wallet balance\"\n"
+        help_message += "- \"How much do I have?\"\n\n"
+        
+        help_message += "📈 **Invest Salary:**\n"
+        help_message += "- \"Invest my ₹2000 salary this month\"\n"
+        help_message += "- \"Buy crypto with ₹5000\"\n"
+        help_message += "- \"Purchase crypto for ₹1000\"\n\n"
+        
+        help_message += "📊 **Financial Analysis:**\n"
+        help_message += "- \"Analyze transactions\" - Deep transaction analysis with AI insights\n"
+        help_message += "- \"Financial insights\" - Get personalized financial advice\n"
+        help_message += "- \"Transaction summary\" - Monthly spending summary\n"
+        help_message += "- \"Spending analysis\" - Detailed spending pattern analysis\n\n"
+        
+        help_message += "🔗 **Connect UPI:**\n"
+        help_message += "- \"Register my UPI ID username@provider\"\n"
+        help_message += "- \"Connect my UPI ID username@provider\"\n"
+        help_message += "- \"My UPI ID is username@provider\"\n\n"
+        
+        help_message += "❓ **Help:**\n"
+        help_message += "- \"Help\" or \"What can you do?\"\n\n"
+        
+        help_message += "**Supported Recipients:** Alice, Bob, Charlie, David, Emma\n"
+        help_message += "**Supported Tokens:** BTC, ETH, MATIC, SOL, DOGE, USDT, USDC, INR"
+        
+        return help_message
     
     def get_recipient_address(self, name: str) -> Optional[str]:
-        """Get wallet address for a recipient name"""
+        """Get recipient wallet address by name"""
         return self.recipient_db.get(name.lower())
 
 
-# Global NLP service instance
+# Create singleton instance
 nlp_service = NLPService() 

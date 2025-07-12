@@ -33,11 +33,20 @@ os.environ.update({
 from src.services.nlp_service import nlp_service
 
 async def chatbot():
-    print("\n💬 Welcome to the Finance Agent Console Chatbot!")
-    print("Type your queries about your finances, UPI transactions, or type 'help' for options.")
-    print("Type 'exit' to quit.\n")
-    user_id = input("Enter your user ID (or any name): ").strip() or "console_user"
-    print(f"\n👤 You are chatting as: {user_id}\n")
+    print("\n🚀 Welcome to the AI-Powered Finance Agent!")
+    print("=" * 50)
+    print("💰 Your personal financial assistant for UPI transactions and crypto")
+    print("=" * 50)
+    print("\n📱 GETTING STARTED:")
+    print("1️⃣ Register your UPI ID with: \"My UPI ID is username@provider\"")
+    print("2️⃣ Get financial insights with: \"Analyze my transactions\"")
+    print("3️⃣ View a summary with: \"Show me transaction summary\"")
+    print("4️⃣ Get investment advice with: \"Invest 5000 rupees\"")
+    print("\nType 'help' to see all available commands")
+    print("Type 'exit' to quit\n")
+    
+    # Use a default user ID without prompting
+    user_id = "default_user"
     
     while True:
         user_input = input("You: ").strip()
