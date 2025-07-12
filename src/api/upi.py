@@ -127,6 +127,8 @@ async def get_payment_status(txn_ref: str):
     """
     try:
         payment = await upi_service.get_payment_by_txn_ref(txn_ref)
+
+        print(payment)
         
         if not payment:
             raise HTTPException(
@@ -139,14 +141,7 @@ async def get_payment_status(txn_ref: str):
         
         return {
             "success": True,
-            "payment": {
-                "txn_ref": payment.txn_ref,
-                "user_id": payment.user_id,
-                "amount": payment.amount,
-                "status": payment.status,
-                "created_at": payment.created_at,
-                "updated_at": payment.updated_at
-            }
+            "payment": payment
         }
         
     except HTTPException:

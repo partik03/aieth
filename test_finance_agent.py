@@ -10,7 +10,7 @@ from datetime import datetime
 
 # Set up test environment variables
 os.environ.update({
-    "MONGO_URI": "mongodb://localhost:27017/test",
+    "MONGO_URI": "mongodb+srv://hs05june:1234567890@cluster0.xpqjxvh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
     "DB_NAME": "test_db",
     "SECRET_KEY": "test_secret_key_12345",
     "OPENAI_API_KEY": "test_openai_key",
