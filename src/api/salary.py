@@ -157,7 +157,7 @@ async def get_user_salaries(user_id: str, limit: int = 10):
         return {
             "success": True,
             "user_id": user_id,
-            "salaries": [salary.dict() for salary in salaries],
+            "salaries": [dict(salary) for salary in salaries],
             "count": len(salaries)
         }
         
@@ -186,7 +186,7 @@ async def get_user_strategies(user_id: str, limit: int = 10):
         return {
             "success": True,
             "user_id": user_id,
-            "strategies": [strategy.dict() for strategy in strategies],
+            "strategies": [dict(strategy) for strategy in strategies],
             "count": len(strategies)
         }
         

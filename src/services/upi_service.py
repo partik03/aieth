@@ -206,10 +206,17 @@ class UPIService:
         """Get payment by transaction reference"""
         try:
             collection = await get_collection(self.collection_name)
+            print(txn_ref)
             payment_doc = await collection.find_one({"txn_ref": txn_ref})
+
+            print(payment_doc)
             
             if payment_doc:
-                return UPIPayment(**payment_doc)
+                payment_doc['_id'] = str(payment_doc['_id'])
+                for key, value in payment_doc.items():
+                    if isinstance(value, datetime):
+                        payment_doc[key] = value.isoformat()
+                return dict(payment_doc)
             return None
             
         except Exception as e:

@@ -167,7 +167,11 @@ class SalaryService:
             
             salaries = []
             async for doc in cursor:
-                salaries.append(Salary(**doc))
+                doc['_id'] = str(doc['_id'])
+                for key, value in doc.items():
+                    if isinstance(value, datetime):
+                        doc[key] = value.isoformat()
+                salaries.append(doc)
             
             return salaries
             
@@ -186,7 +190,11 @@ class SalaryService:
             
             strategies = []
             async for doc in cursor:
-                strategies.append(InvestmentStrategy(**doc))
+                doc['_id'] = str(doc['_id'])
+                for key, value in doc.items():
+                    if isinstance(value, datetime):
+                        doc[key] = value.isoformat()
+                strategies.append(doc)
             
             return strategies
             
