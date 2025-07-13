@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     chain_id: int = Field(default=80001, env="CHAIN_ID")  # Mumbai testnet
     entry_point_address: str = Field(default="0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789", env="ENTRY_POINT_ADDRESS")
     web3_rpc_url: str = Field(..., env="WEB3_RPC_URL")
+    sepolia_rpc_url: str = Field(..., env="SEPOLIA_RPC_URL")
+    etherscan_api_key: str = Field(..., env="ETHERSCAN_API_KEY")
+
     
     model_config = {
         "env_file": ".env",
