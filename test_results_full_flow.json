@@ -1,0 +1,19 @@
+{
+  "test_timestamp": "2025-07-12T18:11:43.031268+00:00",
+  "escrow_created": null,
+  "escrow_confirmed": false,
+  "upi_buy_initiated": null,
+  "upi_payment_success": false,
+  "crypto_released": false,
+  "buyer_dashboard": null,
+  "depositor_dashboard": null,
+  "notifications": {
+    "buyer": [],
+    "depositor": []
+  },
+  "test_summary": {
+    "total_steps": 8,
+    "successful_steps": 1,
+    "flow_completed": false
+  }
+}

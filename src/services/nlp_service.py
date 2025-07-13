@@ -14,6 +14,9 @@ from src.services.twitter_service import twitter_service
 from src.services.finance_agent import finance_agent_service
 from src.services.mock_upi_data import mock_upi_data_service
 from src.services.upi_data_service import upi_data_service
+from src.services.investment_strategy_service import investment_strategy_service
+from src.models.investment_strategy import StrategyCreateRequest, StrategyType, TriggerType
+from src.services.dashboard_service import dashboard_service
 
 
 class NLPService:
@@ -63,6 +66,14 @@ class NLPService:
                 return await self._handle_transaction_summary(user_id)
             elif intent == "register_upi":
                 return await self._handle_register_upi(message_lower, user_id)
+            elif intent == "create_strategy":
+                return await self._handle_create_strategy(message_lower, user_id)
+            elif intent == "check_strategies":
+                return await self._handle_check_strategies(user_id)
+            elif intent == "check_triggers":
+                return await self._handle_check_triggers(user_id)
+            elif intent == "check_invoices":
+                return await self._handle_check_invoices(user_id)
             elif intent == "help":
                 return self._get_help_message()
             else:
@@ -141,6 +152,44 @@ class NLPService:
             r"use.*upi.*id"
         ]
         
+        # Investment strategy patterns
+        strategy_patterns = [
+            r"create.*strategy",
+            r"add.*strategy",
+            r"set.*strategy",
+            r"investment.*strategy",
+            r"automated.*investment",
+            r"ai.*investment"
+        ]
+        
+        # Check strategies patterns
+        check_strategy_patterns = [
+            r"my.*strategies",
+            r"show.*strategies",
+            r"list.*strategies",
+            r"check.*strategies",
+            r"view.*strategies"
+        ]
+        
+        # Check triggers patterns
+        trigger_patterns = [
+            r"check.*triggers",
+            r"any.*triggers",
+            r"investment.*triggers",
+            r"should.*invest",
+            r"ready.*invest"
+        ]
+        
+        # Check invoices patterns
+        invoice_patterns = [
+            r"check.*invoices",
+            r"show.*invoices",
+            r"my.*invoices",
+            r"investment.*invoices",
+            r"pending.*payments",
+            r"payment.*requests"
+        ]
+        
         # Check patterns
         for pattern in transfer_patterns:
             if re.search(pattern, message):
@@ -170,81 +219,116 @@ class NLPService:
             if re.search(pattern, message):
                 return "register_upi"
         
+        for pattern in strategy_patterns:
+            if re.search(pattern, message):
+                return "create_strategy"
+        
+        for pattern in check_strategy_patterns:
+            if re.search(pattern, message):
+                return "check_strategies"
+        
+        for pattern in trigger_patterns:
+            if re.search(pattern, message):
+                return "check_triggers"
+        
+        for pattern in invoice_patterns:
+            if re.search(pattern, message):
+                return "check_invoices"
+        
         for pattern in help_patterns:
             if re.search(pattern, message):
                 return "help"
         
         return "unknown"
     
+    async def _handle_check_balance(self, user_id: str) -> str:
+        """Handle check balance intent"""
+        try:
+            # Ensure wallet exists
+            wallet = await wallet_service.ensure_wallet_exists(user_id)
+            
+            # Get wallet balances
+            balances = await dashboard_service.get_wallet_balances(user_id)
+            
+            if not balances:
+                return "❌ Unable to fetch wallet balances."
+            
+            response = "💰 **Your Wallet Balance**\n\n"
+            
+            # Show INR balance first
+            inr_balance = balances.get("INR", 0)
+            response += f"💵 **INR:** ₹{inr_balance:,.2f}\n\n"
+            
+            # Show crypto balances
+            crypto_balances = {k: v for k, v in balances.items() if k != "INR" and v > 0}
+            
+            if crypto_balances:
+                response += "🪙 **Crypto Holdings:**\n"
+                for token, balance in crypto_balances.items():
+                    response += f"• {token}: {balance:,.6f}\n"
+            else:
+                response += "🪙 **Crypto Holdings:** No crypto tokens\n"
+            
+            response += f"\n📍 **Wallet Address:** `{wallet.wallet_address}`"
+            
+            return response
+            
+        except Exception as e:
+            return f"❌ Failed to check balance: {str(e)}"
+    
     async def _handle_transfer(self, message: str, user_id: str) -> str:
         """Handle transfer intent"""
         try:
-            # Extract amount and token
+            # Ensure wallet exists
+            wallet = await wallet_service.ensure_wallet_exists(user_id)
+            
+            # Extract amount and recipient from message
             amount_match = re.search(r'(\d+(?:\.\d+)?)', message)
             if not amount_match:
                 return "❌ Please specify an amount to transfer."
             
             amount = float(amount_match.group(1))
             
-            # Extract token
-            token = "INR"  # Default to INR
-            for token_name, token_symbol in self.supported_tokens.items():
-                if token_name in message:
-                    token = token_symbol
-                    break
-            
             # Extract recipient
             recipient = None
             for name in self.recipient_db.keys():
-                if name in message:
+                if name.lower() in message.lower():
                     recipient = name
                     break
             
             if not recipient:
                 return "❌ Please specify a recipient (Alice, Bob, Charlie, David, or Emma)."
             
-            # Get recipient wallet address
-            recipient_address = self.recipient_db[recipient]
+            # Extract token type
+            token = "INR"  # Default to INR
+            for token_name, symbol in self.supported_tokens.items():
+                if token_name.lower() in message.lower() or symbol.lower() in message.lower():
+                    token = symbol
+                    break
             
             # Check if user has sufficient balance
-            wallet = await wallet_service.get_wallet_by_user_id(user_id)
-            if not wallet:
-                return "❌ Wallet not found. Please create a wallet first."
+            balances = await dashboard_service.get_wallet_balances(user_id)
+            current_balance = balances.get(token, 0)
             
+            if current_balance < amount:
+                return f"❌ Insufficient {token} balance. You have {current_balance} {token}, need {amount} {token}."
+            
+            # Perform transfer (mock for now, but updates database)
             if token == "INR":
-                if wallet.fiat_balance < amount:
-                    return f"❌ Insufficient INR balance. You have ₹{wallet.fiat_balance:.2f}"
+                await wallet_service.update_fiat_balance(user_id, -amount)
             else:
-                if wallet.crypto_balance.get(token, 0) < amount:
-                    return f"❌ Insufficient {token} balance. You have {wallet.crypto_balance.get(token, 0)} {token}"
+                await wallet_service.update_crypto_balance(user_id, token, -amount)
             
-            # Perform transfer (mock for now)
-            # In real implementation, you would call wallet_service.transfer()
+            recipient_address = self.recipient_db[recipient]
             
-            return f"💸 Successfully sent {amount} {token} to {recipient.capitalize()}!"
+            return f"✅ **Transfer Successful!**\n\n" \
+                   f"💰 **Amount:** {amount} {token}\n" \
+                   f"👤 **Recipient:** {recipient}\n" \
+                   f"📍 **Address:** `{recipient_address}`\n" \
+                   f"📊 **New Balance:** {current_balance - amount} {token}"
             
         except Exception as e:
             return f"❌ Transfer failed: {str(e)}"
-    
-    async def _handle_check_balance(self, user_id: str) -> str:
-        """Handle check balance intent"""
-        try:
-            wallet = await wallet_service.get_wallet_by_user_id(user_id)
-            if not wallet:
-                return "❌ Wallet not found. Please create a wallet first."
-            
-            # Format crypto balances
-            crypto_balances = []
-            for token, balance in wallet.crypto_balance.items():
-                if balance > 0:
-                    crypto_balances.append(f"{balance} {token}")
-            
-            crypto_text = ", ".join(crypto_balances) if crypto_balances else "0"
-            
-            return f"💼 Your wallet balance:\n💰 INR: ₹{wallet.fiat_balance:.2f}\n🪙 Crypto: {crypto_text}"
-            
-        except Exception as e:
-            return f"❌ Failed to check balance: {str(e)}"
     
     async def _handle_analyze_transactions(self, user_id: str) -> str:
         """Handle transaction analysis intent"""
@@ -450,6 +534,249 @@ class NLPService:
         except Exception as e:
             return f"❌ Investment failed: {str(e)}"
     
+    async def _handle_create_strategy(self, message: str, user_id: str) -> str:
+        """Handle create investment strategy intent - AI automatically creates optimal strategy"""
+        try:
+            from src.models.investment_strategy import StrategyCreateRequest, StrategyType, TriggerType
+            
+            # AI analyzes user message to determine optimal strategy
+            strategy_config = await self._analyze_and_create_optimal_strategy(message, user_id)
+            
+            # Create the strategy automatically
+            strategy = await investment_strategy_service.create_strategy(user_id, strategy_config)
+            
+            # Auto-approve the strategy for immediate activation
+            await investment_strategy_service.approve_strategy(strategy.id)
+            
+            return f"🤖 **AI Investment Strategy Created & Activated!**\n\n" \
+                   f"🎯 **Strategy:** {strategy.name}\n" \
+                   f"💰 **Amount:** ₹{strategy.amount:,.2f}\n" \
+                   f"🔄 **Trigger:** {strategy.trigger_type}\n" \
+                   f"🪙 **Tokens:** {', '.join(strategy.crypto_tokens)}\n" \
+                   f"📊 **Allocation:** {strategy.allocation}\n" \
+                   f"⚠️ **Risk Level:** {strategy.risk_level}\n\n" \
+                   f"✅ **Status:** Strategy is now active and monitoring for triggers!\n\n" \
+                   f"💡 **What happens next:**\n" \
+                   f"• AI will automatically check for investment opportunities\n" \
+                   f"• When triggered, you'll receive a UPI payment request\n" \
+                   f"• After payment, AI will automatically invest in crypto\n\n" \
+                   f"🔍 **Monitor your strategy:**\n" \
+                   f"• 'Check triggers' - See if strategy should execute\n" \
+                   f"• 'Show my strategies' - View all your strategies\n" \
+                   f"• 'Check investment invoices' - View pending payments"
+            
+        except Exception as e:
+            return f"❌ Strategy creation failed: {str(e)}"
+    
+    async def _analyze_and_create_optimal_strategy(self, message: str, user_id: str) -> StrategyCreateRequest:
+        """AI analyzes user message and creates optimal investment strategy"""
+        
+        # Extract amount from message
+        amount_match = re.search(r'(\d+(?:\.\d+)?)', message)
+        amount = float(amount_match.group(1)) if amount_match else 5000.0
+        
+        # Analyze user preferences from message
+        message_lower = message.lower()
+        
+        # Determine strategy type based on user's message
+        if any(word in message_lower for word in ['salary', 'monthly', 'regular']):
+            strategy_type = StrategyType.SALARY_PERCENTAGE
+            trigger_type = TriggerType.SALARY_RECEIVED
+            name = "AI Salary Investment Strategy"
+            description = "Automated investment strategy that invests a percentage of your salary"
+        elif any(word in message_lower for word in ['dip', 'market', 'buy low']):
+            strategy_type = StrategyType.MARKET_DIP
+            trigger_type = TriggerType.MARKET_DIP
+            name = "AI Market Dip Strategy"
+            description = "Smart strategy that buys crypto during market dips"
+        elif any(word in message_lower for word in ['trending', 'hot', 'popular']):
+            strategy_type = StrategyType.TRENDING
+            trigger_type = TriggerType.TRENDING_ALERT
+            name = "AI Trending Tokens Strategy"
+            description = "Invests in trending and popular cryptocurrencies"
+        elif any(word in message_lower for word in ['weekly', 'every week']):
+            strategy_type = StrategyType.DCA
+            trigger_type = TriggerType.WEEKLY
+            name = "AI Weekly DCA Strategy"
+            description = "Dollar Cost Averaging strategy for weekly investments"
+        elif any(word in message_lower for word in ['monthly', 'every month']):
+            strategy_type = StrategyType.DCA
+            trigger_type = TriggerType.MONTHLY
+            name = "AI Monthly DCA Strategy"
+            description = "Dollar Cost Averaging strategy for monthly investments"
+        else:
+            # Default to DCA with weekly trigger
+            strategy_type = StrategyType.DCA
+            trigger_type = TriggerType.WEEKLY
+            name = "AI Automated DCA Strategy"
+            description = "Automated Dollar Cost Averaging strategy for regular crypto investments"
+        
+        # Determine risk level based on amount and keywords
+        if amount > 10000 or any(word in message_lower for word in ['aggressive', 'high risk']):
+            risk_level = "high"
+            crypto_tokens = ["BTC", "ETH", "SOL", "MATIC", "DOGE"]
+            allocation = {"BTC": 30, "ETH": 30, "SOL": 20, "MATIC": 15, "DOGE": 5}
+        elif amount < 2000 or any(word in message_lower for word in ['safe', 'conservative', 'low risk']):
+            risk_level = "low"
+            crypto_tokens = ["BTC", "ETH", "USDT"]
+            allocation = {"BTC": 50, "ETH": 30, "USDT": 20}
+        else:
+            risk_level = "medium"
+            crypto_tokens = ["BTC", "ETH", "MATIC", "USDT"]
+            allocation = {"BTC": 40, "ETH": 35, "MATIC": 15, "USDT": 10}
+        
+        # Calculate percentage if salary-related
+        percentage = None
+        if strategy_type == StrategyType.SALARY_PERCENTAGE:
+            if amount > 50000:
+                percentage = 10  # 10% of salary
+            elif amount > 20000:
+                percentage = 15  # 15% of salary
+            else:
+                percentage = 20  # 20% of salary
+        
+        # Set investment limits
+        max_investment = amount * 2
+        min_investment = amount * 0.5
+        
+        return StrategyCreateRequest(
+            name=name,
+            description=description,
+            strategy_type=strategy_type,
+            trigger_type=trigger_type,
+            amount=amount,
+            percentage=percentage,
+            crypto_tokens=crypto_tokens,
+            allocation=allocation,
+            risk_level=risk_level,
+            max_investment=max_investment,
+            min_investment=min_investment
+        )
+    
+    async def _handle_check_strategies(self, user_id: str) -> str:
+        """Handle check strategies intent"""
+        try:
+            strategies = await investment_strategy_service.get_user_strategies(user_id)
+            
+            if not strategies:
+                return "📋 **No Investment Strategies Found**\n\n" \
+                       "You don't have any investment strategies set up yet.\n" \
+                       "Try saying: 'Create an investment strategy' to get started!"
+            
+            response = f"📋 **Your Investment Strategies ({len(strategies)})**\n\n"
+            
+            for i, strategy in enumerate(strategies, 1):
+                status = "✅ Active" if strategy.is_active and strategy.is_approved else "⏸️ Pending Approval"
+                response += f"{i}. **{strategy.name}** - {status}\n"
+                response += f"   💰 Amount: ₹{strategy.amount:,.2f}\n"
+                response += f"   🔄 Trigger: {strategy.trigger_type}\n"
+                response += f"   🪙 Tokens: {', '.join(strategy.crypto_tokens)}\n"
+                response += f"   📊 Allocation: {strategy.allocation}\n\n"
+            
+            response += "💡 **Commands:**\n" \
+                       "• 'Check triggers' - See if any strategies should execute\n" \
+                       "• 'Approve strategy [ID]' - Approve a pending strategy\n" \
+                       "• 'Create strategy' - Create a new strategy"
+            
+            return response
+            
+        except Exception as e:
+            return f"❌ Failed to get strategies: {str(e)}"
+    
+    async def _handle_check_triggers(self, user_id: str) -> str:
+        """Handle check triggers intent - AI automatically generates invoices"""
+        try:
+            triggered_strategies = await investment_strategy_service.check_triggers(user_id)
+            
+            if not triggered_strategies:
+                return "🔍 **No Investment Triggers Found**\n\n" \
+                       "None of your investment strategies are ready to execute at this time.\n" \
+                       "The AI will automatically check for triggers and notify you when it's time to invest!"
+            
+            # AI automatically generates invoices for triggered strategies
+            invoices = []
+            for strategy in triggered_strategies:
+                reason = f"Strategy '{strategy.name}' triggered by {strategy.trigger_type}"
+                invoice = await investment_strategy_service.generate_investment_invoice(strategy, reason)
+                invoices.append(invoice)
+            
+            response = f"🚀 **Investment Triggers Found & Invoices Generated! ({len(triggered_strategies)})**\n\n"
+            
+            for i, (strategy, invoice) in enumerate(zip(triggered_strategies, invoices), 1):
+                response += f"{i}. **{strategy.name}**\n"
+                response += f"   💰 Amount: ₹{strategy.amount:,.2f}\n"
+                response += f"   🔄 Trigger: {strategy.trigger_type}\n"
+                response += f"   🪙 Tokens: {', '.join(strategy.crypto_tokens)}\n"
+                response += f"   📄 Invoice: {invoice.id}\n\n"
+            
+            response += "💳 **Payment Required:**\n" \
+                       "AI has generated UPI payment invoices for these investments.\n" \
+                       "Please pay via UPI to execute the investments.\n\n" \
+                       "🔍 **Check your invoices:**\n" \
+                       "• 'Show my investment invoices' - View all pending payments\n" \
+                       "• 'Check invoice status' - Check payment status\n" \
+                       "• 'Execute investment [invoice_id]' - Execute after payment"
+            
+            return response
+            
+        except Exception as e:
+            return f"❌ Failed to check triggers: {str(e)}"
+    
+    async def _handle_check_invoices(self, user_id: str) -> str:
+        """Handle check investment invoices intent"""
+        try:
+            invoices = await investment_strategy_service.get_user_invoices(user_id)
+            
+            if not invoices:
+                return "📄 **No Investment Invoices Found**\n\n" \
+                       "You don't have any pending investment invoices.\n" \
+                       "Invoices are generated when your investment strategies are triggered."
+            
+            # Filter by status
+            pending_invoices = [i for i in invoices if i.status == "pending"]
+            paid_invoices = [i for i in invoices if i.status == "paid"]
+            executed_invoices = [i for i in invoices if i.status == "executed"]
+            
+            response = f"📄 **Investment Invoices ({len(invoices)})**\n\n"
+            
+            if pending_invoices:
+                response += f"⏳ **Pending Payments ({len(pending_invoices)})**\n"
+                for i, invoice in enumerate(pending_invoices[:3], 1):  # Show first 3
+                    response += f"{i}. **Invoice {invoice.id[:8]}...**\n"
+                    response += f"   💰 Amount: ₹{invoice.amount:,.2f}\n"
+                    response += f"   🪙 Tokens: {', '.join(invoice.crypto_tokens)}\n"
+                    response += f"   📅 Expires: {invoice.expires_at.strftime('%Y-%m-%d %H:%M')}\n"
+                    response += f"   💳 UPI: {invoice.upi_string}\n\n"
+                
+                if len(pending_invoices) > 3:
+                    response += f"   ... and {len(pending_invoices) - 3} more pending invoices\n\n"
+            
+            if paid_invoices:
+                response += f"✅ **Paid & Ready to Execute ({len(paid_invoices)})**\n"
+                for i, invoice in enumerate(paid_invoices[:2], 1):
+                    response += f"{i}. **Invoice {invoice.id[:8]}...**\n"
+                    response += f"   💰 Amount: ₹{invoice.amount:,.2f}\n"
+                    response += f"   🪙 Tokens: {', '.join(invoice.crypto_tokens)}\n"
+                    response += f"   ⏰ Paid: {invoice.paid_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+            
+            if executed_invoices:
+                response += f"🎯 **Executed Investments ({len(executed_invoices)})**\n"
+                for i, invoice in enumerate(executed_invoices[:2], 1):
+                    response += f"{i}. **Invoice {invoice.id[:8]}...**\n"
+                    response += f"   💰 Amount: ₹{invoice.amount:,.2f}\n"
+                    response += f"   🪙 Tokens: {', '.join(invoice.crypto_tokens)}\n"
+                    response += f"   ⏰ Executed: {invoice.executed_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+            
+            response += "💡 **Actions:**\n" \
+                       "• Pay pending invoices via UPI\n" \
+                       "• 'Execute investment [invoice_id]' - Execute paid invoices\n" \
+                       "• 'Check triggers' - Check for new investment opportunities"
+            
+            return response
+            
+        except Exception as e:
+            return f"❌ Failed to get invoices: {str(e)}"
+    
     def _get_help_message(self) -> str:
         """Get help message with available commands"""
         help_message = "🤖 **AI Wallet Assistant - Available Commands**\n\n"
@@ -468,6 +795,12 @@ class NLPService:
         help_message += "- \"Invest my ₹2000 salary this month\"\n"
         help_message += "- \"Buy crypto with ₹5000\"\n"
         help_message += "- \"Purchase crypto for ₹1000\"\n\n"
+        
+        help_message += "🤖 **AI Investment Strategies:**\n"
+        help_message += "- \"Create an investment strategy\" - Set up automated AI-driven investments\n"
+        help_message += "- \"Show my strategies\" - View your investment strategies\n"
+        help_message += "- \"Check triggers\" - See if any strategies should execute\n"
+        help_message += "- \"Check investment invoices\" - View pending investment payments\n\n"
         
         help_message += "📊 **Financial Analysis:**\n"
         help_message += "- \"Analyze transactions\" - Deep transaction analysis with AI insights\n"

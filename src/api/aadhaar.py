@@ -14,7 +14,10 @@ from src.models.aadhaar import (
     AadhaarInitiateResponse,
     AadhaarVerifyResponse
 )
+from src.models.user import UserCreate, UserResponse, Token
 from src.services.aadhaar_service import aadhaar_service
+from src.services.auth import auth_service
+from datetime import timedelta
 
 router = APIRouter()
 
@@ -28,6 +31,7 @@ async def initiate_aadhaar_verification(request: AadhaarInitiateRequest):
     - Returns transaction ID for OTP verification
     """
     try:
+        print("initiate_aadhaar_verification", request)
         response = await aadhaar_service.initiate_verification(request)
         print(response)
         if not response.success:

@@ -60,6 +60,46 @@ class WalletService:
         except Exception as e:
             raise Exception(f"Failed to get wallet: {str(e)}")
     
+    async def get_or_create_wallet(self, user_id: str, wallet_address: str = None) -> Wallet:
+        """Get existing wallet or create a new one if it doesn't exist"""
+        try:
+            wallet = await self.get_wallet_by_user_id(user_id)
+            
+            if wallet:
+                return wallet
+            
+            # Create a new wallet if it doesn't exist
+            if not wallet_address:
+                wallet_address = f"0x{user_id[-40:]}" if len(user_id) >= 40 else f"0x{user_id:0>40}"
+            
+            return await self.create_wallet(user_id, wallet_address)
+            
+        except Exception as e:
+            raise Exception(f"Failed to get or create wallet: {str(e)}")
+    
+    async def ensure_wallet_exists(self, user_id: str) -> Wallet:
+        """Ensure a wallet exists for the user, create if needed"""
+        try:
+            wallet = await self.get_wallet_by_user_id(user_id)
+            
+            if not wallet:
+                # Create a default wallet with some initial balance for demo
+                wallet_address = f"0x{user_id[-40:]}" if len(user_id) >= 40 else f"0x{user_id:0>40}"
+                wallet = await self.create_wallet(user_id, wallet_address)
+                
+                # Add some initial balance for demo purposes
+                await self.update_fiat_balance(user_id, 10000.0)  # ₹10,000 initial balance
+                await self.update_crypto_balance(user_id, "BTC", 0.001)  # Small BTC balance
+                await self.update_crypto_balance(user_id, "ETH", 0.01)   # Small ETH balance
+                await self.update_crypto_balance(user_id, "USDT", 100.0) # Some USDT
+                
+                print(f"✅ Created wallet for user {user_id} with initial balance")
+            
+            return wallet
+            
+        except Exception as e:
+            raise Exception(f"Failed to ensure wallet exists: {str(e)}")
+    
     async def update_fiat_balance(self, user_id: str, amount: float) -> Wallet:
         """Update fiat balance using $inc operator"""
         try:

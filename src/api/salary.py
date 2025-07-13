@@ -2,28 +2,33 @@
 Salary API routes for processing salary data and generating investment strategies
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 
 from src.models.salary import SalaryRequest, SalaryResponse
 from src.services.salary_service import salary_service
 from src.services.twitter_service import twitter_service
+from src.api.dependencies import get_current_user
+from src.models.user import User
 
 router = APIRouter()
 
 
 @router.post("/salary", response_model=SalaryResponse)
-async def process_salary(request: SalaryRequest):
+async def process_salary(request: SalaryRequest, current_user: User = Depends(get_current_user)):
     """
     Process salary data and generate investment strategy
     
-    - **user_id**: User ID who received salary
+    - **user_id**: User ID who received salary (from token)
     - **amount**: Salary amount in INR
     - **employer**: Employer name
     - **date**: Salary date
     - Returns salary ID, strategy ID, and generated investment strategy
     """
     try:
+        # Use authenticated user's ID instead of request user_id
+        request.user_id = current_user.id
+        
         # Convert request to dict
         salary_data = request.dict()
         
@@ -143,15 +148,22 @@ async def get_most_trending_tokens(hours: int = 24):
 
 
 @router.get("/user/{user_id}/salaries")
-async def get_user_salaries(user_id: str, limit: int = 10):
+async def get_user_salaries(user_id: str, limit: int = 10, current_user: User = Depends(get_current_user)):
     """
     Get recent salaries for a user
     
-    - **user_id**: User ID
+    - **user_id**: User ID (must match authenticated user)
     - **limit**: Number of records to return (default: 10)
     - Returns recent salary records for the user
     """
     try:
+        # Ensure user can only access their own data
+        if user_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: Can only access own data"
+            )
+        
         salaries = await salary_service.get_user_salaries(user_id, limit)
         
         return {
@@ -172,15 +184,22 @@ async def get_user_salaries(user_id: str, limit: int = 10):
 
 
 @router.get("/user/{user_id}/strategies")
-async def get_user_strategies(user_id: str, limit: int = 10):
+async def get_user_strategies(user_id: str, limit: int = 10, current_user: User = Depends(get_current_user)):
     """
     Get recent investment strategies for a user
     
-    - **user_id**: User ID
+    - **user_id**: User ID (must match authenticated user)
     - **limit**: Number of records to return (default: 10)
     - Returns recent investment strategies for the user
     """
     try:
+        # Ensure user can only access their own data
+        if user_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: Can only access own data"
+            )
+        
         strategies = await salary_service.get_user_strategies(user_id, limit)
         
         return {
