@@ -10,12 +10,12 @@ from web3 import Web3
 from eth_account import Account
 from eth_account.messages import encode_defunct
 import time
-
 from src.config.settings import get_settings
 
 
 class BiconomyService:
     """Service for Biconomy Smart Account operations"""
+
     
     def __init__(self):
         self.settings = get_settings()
@@ -29,6 +29,7 @@ class BiconomyService:
         
         # Backend signer (for relayer operations)
         self.backend_signer = Account.from_key(self.settings.biconomy_relayer_key)
+
     
     def build_user_operation(
         self,

@@ -22,6 +22,7 @@ from src.models.aadhaar import (
     DigiLockerVerifyOTPRequest,
     DigiLockerGetAuthDataRequest
 )
+from src.services.wallet_service import wallet_service
 
 
 class AadhaarService:
@@ -73,6 +74,7 @@ class AadhaarService:
             aadhaar_verification_doc = await collection.find_one({"_id": ObjectId(request.txn)})
 
             if aadhaar_verification_doc["otp"] == request.otp:
+                wallet_service.create_wallet(aadhaar_verification_doc["aadhaar_number"])
                 return AadhaarVerifyResponse(success=True, verified=True)
             else:
                 return AadhaarVerifyResponse(success=True, verified=True)

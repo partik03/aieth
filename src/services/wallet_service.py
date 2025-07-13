@@ -5,6 +5,7 @@ Wallet service for managing crypto and fiat balances
 from typing import Optional, Dict
 from datetime import datetime
 from bson import ObjectId
+from eth_account import Account
 
 from src.models.wallet import Wallet, WalletCreate, WalletUpdate
 from src.services.db import get_collection
@@ -15,6 +16,13 @@ class WalletService:
     
     def __init__(self):
         self.collection_name = "wallets"
+
+    def generate_eth_wallet():
+        acct = Account.create()
+        return {
+            "private_key": acct.key.hex(),  
+            "wallet_address": acct.address
+        }
     
     async def create_wallet(self, user_id: str, wallet_address: str) -> Wallet:
         """Create a new wallet for a user"""
@@ -26,6 +34,12 @@ class WalletService:
             if existing_wallet:
                 raise ValueError(f"Wallet already exists for user: {user_id}")
             
+            if not wallet_address:
+                wallet_obj = generate_eth_wallet()
+                wallet_address = wallet_obj["wallet_address"]
+            
+            print(wallet_obj)
+
             # Create wallet document
             wallet_data = WalletCreate(
                 user_id=user_id,
