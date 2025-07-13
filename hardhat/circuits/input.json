@@ -1,8 +1,5 @@
 {
-  "aadhaar_hash": "123456789012",
-  "wallet_address": "987654321098",
-  "did_hash": "555666777888",
-  "aadhaar_number": "123456789012",
-  "wallet_private_key": "987654321098",
-  "did_string": "555666777888"
+  "aadhar_secret": "123412341234",
+  "otp_verified": 1,
+  "hash_commitment": "1234567890123456789012345678901234567890123456789012345678901234"
 } 
