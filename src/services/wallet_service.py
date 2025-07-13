@@ -37,13 +37,14 @@ class WalletService:
             if not wallet_address:
                 wallet_obj = generate_eth_wallet()
                 wallet_address = wallet_obj["wallet_address"]
+                private_key = wallet_obj["private_key"]
             
-            print(wallet_obj)
 
             # Create wallet document
             wallet_data = WalletCreate(
                 user_id=user_id,
                 wallet_address=wallet_address,
+                private_key=private_key,
                 crypto_balance={},
                 fiat_balance=0.0
             ).dict()
