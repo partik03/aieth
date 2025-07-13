@@ -1,6 +1,7 @@
-import { BiconomySmartAccount, BiconomySmartAccountConfig } from '../node_modules/@biconomy/account/dist/_types'
+import { BiconomySmartAccountV2, BiconomySmartAccountV2Config } from '@biconomy/account'
 import { ethers } from 'ethers'
 import { ChainId } from '@biconomy/core-types'
+import { Address } from 'abitype'
 
 export interface BiconomyConfig {
   bundlerUrl: string
@@ -11,7 +12,7 @@ export interface BiconomyConfig {
 
 export class BiconomyWalletHelper {
   private config: BiconomyConfig
-  private smartAccount: BiconomySmartAccount | null = null
+  private smartAccount: BiconomySmartAccountV2 | null = null
 
   constructor(config: BiconomyConfig) {
     this.config = config
@@ -20,8 +21,8 @@ export class BiconomyWalletHelper {
   /**
    * Create a new Biconomy Smart Account
    */
-  async createSmartWallet(signer: ethers.Signer): Promise<BiconomySmartAccount> {
-    const biconomyAccountConfig: BiconomySmartAccountConfig = {
+  async createSmartWallet(signer: ethers.Signer): Promise<BiconomySmartAccountV2> {
+    const biconomyAccountConfig: BiconomySmartAccountV2Config = {
       signer,
       chainId: this.config.chainId,
       bundlerUrl: this.config.bundlerUrl,
@@ -29,8 +30,7 @@ export class BiconomyWalletHelper {
       entryPointAddress: this.config.entryPointAddress,
     }
 
-    this.smartAccount = await BiconomySmartAccount.create(biconomyAccountConfig)
-    await this.smartAccount.init()
+    this.smartAccount = await BiconomySmartAccountV2.create(biconomyAccountConfig)
 
     return this.smartAccount
   }
@@ -42,7 +42,7 @@ export class BiconomyWalletHelper {
     if (!this.smartAccount) {
       throw new Error('Smart account not initialized')
     }
-    return await this.smartAccount.getSmartAccountAddress()
+    return await this.smartAccount.getAccountAddress()
   }
 
   /**
@@ -63,9 +63,11 @@ export class BiconomyWalletHelper {
       value: transaction.value || '0',
     })
 
+    const txHash = await userOpResponse.waitForTxHash()
+
     return {
       userOpHash: userOpResponse.userOpHash,
-      txHash: userOpResponse.txHash,
+      txHash: txHash.transactionHash
     }
   }
 
@@ -106,13 +108,13 @@ export class BiconomyWalletHelper {
   /**
    * Get transaction status
    */
-  async getTransactionStatus(userOpHash: string): Promise<any> {
-    if (!this.smartAccount) {
-      throw new Error('Smart account not initialized')
-    }
+  // async getTransactionStatus(userOpHash: string): Promise<any> {
+  //   if (!this.smartAccount) {
+  //     throw new Error('Smart account not initialized')
+  //   }
 
-    return await this.smartAccount.getUserOpReceipt(userOpHash)
-  }
+  //   return await this.smartAccount.getUserOpHash(userOpHash)
+  // }
 
   /**
    * Get smart account balance
@@ -122,9 +124,9 @@ export class BiconomyWalletHelper {
       throw new Error('Smart account not initialized')
     }
 
-    const address = await this.smartAccount.getSmartAccountAddress()
-    const provider = this.smartAccount.provider
-    const balance = await provider.getBalance(address)
+    const address = await this.smartAccount.getAccountAddress()
+    const provider = this.smartAccount.rpcProvider
+    const balance = await provider.getBalance({address: address as Address})
     return ethers.utils.formatEther(balance)
   }
 
@@ -136,12 +138,13 @@ export class BiconomyWalletHelper {
       throw new Error('Smart account not initialized')
     }
 
-    const address = await this.smartAccount.getSmartAccountAddress()
+    const address = await this.smartAccount.getAccountAddress()
     const erc20Interface = new ethers.utils.Interface([
       'function balanceOf(address owner) view returns (uint256)',
     ])
 
-    const contract = new ethers.Contract(tokenAddress, erc20Interface, this.smartAccount.provider)
+    const provider = new ethers.providers.JsonRpcProvider(process.env.WEB3_RPC_URL)
+    const contract = new ethers.Contract(tokenAddress, erc20Interface, provider)
     const balance = await contract.balanceOf(address)
     return ethers.utils.formatEther(balance)
   }
@@ -152,8 +155,8 @@ export class BiconomyWalletHelper {
   async recoverSmartAccount(
     signer: ethers.Signer,
     accountAddress?: string
-  ): Promise<BiconomySmartAccount> {
-    const biconomyAccountConfig: BiconomySmartAccountConfig = {
+  ): Promise<BiconomySmartAccountV2> {
+    const biconomyAccountConfig: BiconomySmartAccountV2Config = {
       signer,
       chainId: this.config.chainId,
       bundlerUrl: this.config.bundlerUrl,
@@ -165,8 +168,8 @@ export class BiconomyWalletHelper {
       biconomyAccountConfig.accountAddress = accountAddress
     }
 
-    this.smartAccount = await BiconomySmartAccount.create(biconomyAccountConfig)
-    await this.smartAccount.init()
+    this.smartAccount = await BiconomySmartAccountV2.create(biconomyAccountConfig)
+    await this.smartAccount.getInitCode()
 
     return this.smartAccount
   }
@@ -174,7 +177,7 @@ export class BiconomyWalletHelper {
   /**
    * Get the current smart account instance
    */
-  getSmartAccount(): BiconomySmartAccount | null {
+  getSmartAccount(): BiconomySmartAccountV2 | null {
     return this.smartAccount
   }
 }
