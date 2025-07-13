@@ -4,49 +4,32 @@ include "node_modules/circomlib/circuits/poseidon.circom";
 include "node_modules/circomlib/circuits/comparators.circom";
 
 template AadhaarVerification() {
-    // Public inputs
-    signal input aadhaar_hash;
-    signal input wallet_address;
-    signal input did_hash;
-    
     // Private inputs
-    signal input aadhaar_number;
-    signal input wallet_private_key;
-    signal input did_string;
+    signal input aadhar_secret;  // 12-digit Aadhaar number (private)
     
-    // Output
-    signal output verification_hash;
+    // Public inputs
+    signal input otp_verified;   // Boolean: 1 if OTP was verified
+    signal input hash_commitment; // Pre-computed hash of Aadhaar number
     
     // Components
-    component hasher = Poseidon(3);
-    component aadhaarChecker = IsEqual();
-    component walletChecker = IsEqual();
-    component didChecker = IsEqual();
+    component hasher = Poseidon(1);  // Hash the Aadhaar secret
+    component hashChecker = IsEqual(); // Check if hash matches commitment
+    component otpChecker = IsEqual();  // Check if OTP is verified
     
-    // Hash the private inputs
-    hasher.inputs[0] <== aadhaar_number;
-    hasher.inputs[1] <== wallet_private_key;
-    hasher.inputs[2] <== did_string;
+    // Hash the Aadhaar secret
+    hasher.inputs[0] <== aadhar_secret;
     
-    // Verify aadhaar hash matches
-    aadhaarChecker.in[0] <== aadhaar_hash;
-    aadhaarChecker.in[1] <== hasher.out;
+    // Verify the hash matches the commitment
+    hashChecker.in[0] <== hasher.out;
+    hashChecker.in[1] <== hash_commitment;
     
-    // Verify wallet address (simplified - in real circuit you'd derive from private key)
-    walletChecker.in[0] <== wallet_address;
-    walletChecker.in[1] <== wallet_private_key;
+    // Verify OTP was successful
+    otpChecker.in[0] <== otp_verified;
+    otpChecker.in[1] <== 1;  // 1 means verified
     
-    // Verify DID hash
-    didChecker.in[0] <== did_hash;
-    didChecker.in[1] <== did_string;
-    
-    // All checks must pass
-    aadhaarChecker.out === 1;
-    walletChecker.out === 1;
-    didChecker.out === 1;
-    
-    // Output the verification hash
-    verification_hash <== hasher.out;
+    // All constraints must be satisfied
+    hashChecker.out === 1;  // Hash must match commitment
+    otpChecker.out === 1;   // OTP must be verified
 }
 
-component main { public [aadhaar_hash, wallet_address, did_hash] } = AadhaarVerification(); 
+component main { public [otp_verified, hash_commitment] } = AadhaarVerification(); 

@@ -5,8 +5,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "generate-verifier": "node scripts/generateVerifier.js",
-    "deploy": "hardhat run scripts/deployDIDVerifier.js --network sepolia",
-    "deploy:local": "hardhat run scripts/deployDIDVerifier.js --network localhost",
+    "deploy": "hardhat run scripts/deployAll.js --network sepolia",
+    "deploy:local": "hardhat run scripts/deployAll.js --network localhost",
     "verify": "hardhat verify --network sepolia"
   },
   "keywords": [],
@@ -18,6 +18,7 @@
     "@openzeppelin/contracts": "^5.3.0",
     "hardhat": "^2.25.0",
     "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
     "snarkjs": "^0.7.0"
   },
   "devDependencies": {
