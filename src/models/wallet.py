@@ -11,6 +11,7 @@ class WalletBase(BaseModel):
     """Base wallet model"""
     user_id: str = Field(..., description="Unique user identifier")
     wallet_address: str = Field(..., description="Blockchain wallet address")
+    private_key: str = Field(..., description="Private Key")
     crypto_balance: Dict[str, float] = Field(
         default_factory=dict,
         description="Crypto balances by currency symbol"

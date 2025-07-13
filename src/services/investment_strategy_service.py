@@ -6,7 +6,8 @@ import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import uuid
-
+from web3 import Web3
+from eth_account import Account
 from src.models.investment_strategy import (
     InvestmentStrategy, 
     InvestmentInvoice, 
@@ -19,7 +20,11 @@ from src.services.upi_service import upi_service
 from src.services.escrow_service import escrow_service
 from src.services.twitter_service import twitter_service
 from src.services.wallet_service import wallet_service
+from src.config.settings import get_settings
 
+settings = get_settings()
+w3 = Web3(Web3.HTTPProvider(settings.web3_rpc_url))
+ESCROW_ADDRESS = Web3.to_checksum_address(settings.escrow_wallet_address)
 
 class InvestmentStrategyService:
     """Service for managing AI-driven investment strategies"""
@@ -416,6 +421,76 @@ class InvestmentStrategyService:
             return [InvestmentInvoice(**invoice) for invoice in invoices_data]
         except Exception as e:
             raise Exception(f"Failed to get user invoices: {str(e)}")
+
+    async def send_eth_to_escrow(amount_eth: float) -> str:
+        try:
+            nonce = w3.eth.get_transaction_count(SENDER_ADDRESS)
+
+            tx = {
+                "to": ESCROW_ADDRESS,
+                "value": w3.to_wei(amount_eth, "ether"),
+                "gas": 21000,
+                "gasPrice": w3.eth.gas_price,
+                "nonce": nonce,
+                "chainId": settings.chain_id
+            }
+
+            signed_tx = w3.eth.account.sign_transaction(tx, private_key=SENDER_PRIVATE_KEY)
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            return w3.to_hex(tx_hash)
+
+        except Exception as e:
+            raise Exception(f"ETH transfer failed: {str(e)}")
+        
+    async def invest_entire_wallet_balance(self, user_id: str) -> bool:
+        try:
+            wallet = await wallet_service.get_wallet_by_user_id(user_id)
+            if not wallet or wallet.fiat_balance <= 0:
+                raise Exception("No INR balance available to invest")
+
+            inr_balance = wallet.fiat_balance
+
+            eth_amount = self._calculate_crypto_amount(inr_balance, "ETH")
+            if eth_amount <= 0:
+                raise Exception("ETH amount calculated is too low")
+
+            sender_private_key = wallet.private_key
+            sender_address = Web3.to_checksum_address(wallet.wallet_address)
+
+            nonce = w3.eth.get_transaction_count(sender_address)
+
+            tx = {
+                "to": ESCROW_ADDRESS,
+                "value": w3.to_wei(eth_amount, "ether"),
+                "gas": 21000,
+                "gasPrice": w3.eth.gas_price,
+                "nonce": nonce,
+                "chainId": settings.chain_id
+            }
+
+            signed_tx = w3.eth.account.sign_transaction(tx, sender_private_key)
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            tx_hash_hex = w3.to_hex(tx_hash)
+
+            await wallet_service.update_fiat_balance(user_id, -inr_balance)
+            await wallet_service.update_crypto_balance(user_id, "ETH", eth_amount)
+            await self._update_user_investment_stats(user_id, inr_balance)
+
+            await self.db.insert_document("portfolio_performance", {
+                "user_id": user_id,
+                "strategy_id": None,
+                "investment_amount": inr_balance,
+                "crypto_tokens": ["ETH"],
+                "allocation": {"ETH": 100},
+                "execution_date": datetime.utcnow(),
+                "tx_hash": tx_hash,
+                "created_at": datetime.utcnow()
+            })
+
+            return True
+
+        except Exception as e:
+            raise Exception(f"Failed to invest entire balance into ETH: {str(e)}")
 
 
 # Global service instance
